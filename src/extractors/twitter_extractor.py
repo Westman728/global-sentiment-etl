@@ -114,7 +114,7 @@ class TwitterExtractor:
 
         return all_tweets
     
-    def get_user_timeline(self, username, count=100, include_retwets=False):
+    def get_user_timeline(self, username, count=100, include_retweets=False):
         """Get the user timeline for a specific user.
         
         Args:
@@ -125,7 +125,7 @@ class TwitterExtractor:
         Returns:
         pd.DataFrame: A DataFrame containing the user's tweets.
         """
-        logger.info(f"Getting {count} tweets from user timeline: {username}, include retweets: {include_retweets}")
+        logger.info(f"Getting {count} tweets from user timeline: {username}")
 
         try:
             tweets = tweepy.Cursor(
