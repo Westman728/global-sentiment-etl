@@ -1,6 +1,6 @@
 # MongoDB settings
 mongodb:
-  connection_string: "MONGODB CON STRING"
+  connection_string: "mongodb://localhost:27017/"
   database: "global_sentiment"
 
 # Reddit extraction settings
