@@ -6,7 +6,7 @@ from pymongo import MongoClient
 
 from extractors.reddit_extractor import RedditExtractor
 # set other extractors here when implemented
-# from extractors.twitter_extractor import TwitterExtractor
+from extractors.twitter_extractor import TwitterExtractor
 # from extractors.news_extractor import NewsExtractor
 
 def setup_logging():
@@ -73,7 +73,35 @@ def main():
     except Exception as e:
         logger.error(f"Error extracting or storing Reddit posts: {str(e)}")
 
+    try:
+        twitter_extractor = TwitterExtractor()
+        twitter_settings = settings["twitter"]
 
+        tweets = twitter_extractor.search_multiple_terms(
+            search_terms=twitter_settings["search_terms"],
+            count_per_term=twitter_settings["tweets_per_term"],
+            include_retweets=twitter_settings["include_retweets"],
+        )
+        inserted_count = store_to_mongodb(
+            tweets,
+            mongo_client,
+            settings["mongodb"]["database"],
+            "raw_twitter_posts"
+        )
+
+        logger.info(f"Inserted {inserted_count} Twitter posts into MongoDB.")
+
+        trends = twitter_extractor.get_trending_topics()
+        inserted_count = store_to_mongodb(
+            trends,
+            mongo_client,
+            settings["mongodb"]["database"],
+            "raw_trending_topics"
+        )
+        logger.info(f"Inserted {inserted_count} trending topics into MongoDB.")
+
+    except Exception as e:
+        logger.error(f"Error extracting or storing Twitter posts: {str(e)}")
         # future extractors goes here <--------------------------
 
         logger.info("Data extraction and storage completed successfully.")

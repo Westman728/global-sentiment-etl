@@ -1,0 +1,26 @@
+# MongoDB settings
+mongodb:
+  connection_string: "MONGODB CON STRING"
+  database: "global_sentiment"
+
+# Reddit extraction settings
+reddit:
+  subreddits:
+    - "worldnews"
+    - "news"
+    - "politics"
+    - "technology"
+    - "science"
+  posts_per_subreddit: 100
+  sort: "hot"
+
+  # Twitter extraction settings
+  twitter:
+    search_terms:
+      - "climate change"
+      - "politics"
+      - "economy"
+      - "trump"
+      - "technology"
+    tweets_per_term: 100
+    include_retweets: false
