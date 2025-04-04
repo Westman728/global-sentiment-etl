@@ -15,12 +15,19 @@ reddit:
   sort: "hot"
 
   # Twitter extraction settings
-  twitter:
-    search_terms:
-      - "climate change"
-      - "politics"
-      - "economy"
-      - "trump"
-      - "technology"
-    tweets_per_term: 100
-    include_retweets: false
+twitter:
+  search_terms:
+    - "climate change"
+    - "politics"
+    - "economy"
+    - "trump"
+    - "technology"
+  tweets_per_term: 100
+  include_retweets: false
+
+news:
+  sources:
+    - "bbc.com"
+    - "cnn.com"
+    - "reuters.com"
+  articles_per_source: 20

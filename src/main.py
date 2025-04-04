@@ -5,9 +5,8 @@ from datetime import datetime
 from pymongo import MongoClient
 
 from extractors.reddit_extractor import RedditExtractor
-# set other extractors here when implemented
 from extractors.twitter_extractor import TwitterExtractor
-# from extractors.news_extractor import NewsExtractor
+from extractors.news_extractor import NewsExtractor
 
 def setup_logging():
     """Configure logging settings for the app"""
@@ -52,6 +51,7 @@ def main():
         logger.error(f"Error connecting to MongoDB: {str(e)}")
         return
     
+    # reddit extraction
     try:
         reddit_extractor = RedditExtractor()
         reddit_settings = settings["reddit"]
@@ -73,6 +73,7 @@ def main():
     except Exception as e:
         logger.error(f"Error extracting or storing Reddit posts: {str(e)}")
 
+    # twitter extraction
     try:
         twitter_extractor = TwitterExtractor()
         twitter_settings = settings["twitter"]
@@ -102,7 +103,35 @@ def main():
 
     except Exception as e:
         logger.error(f"Error extracting or storing Twitter posts: {str(e)}")
-        # future extractors goes here <--------------------------
+        
+    
+    # news extraction
+    try:
+        news_extractor = NewsExtractor()
+        news_settings = settings["news"]
+
+        categories ={}
+        for source in news_settings["sources"]:
+            if "bbc" in source:
+                categories["bbc"] = ["news", "business", "innovation"]
+            elif "reuters" in source:
+                categories["reuters"] = ["world", "business", "sustainability"]
+            elif "cnn" in source:
+                categories["cnn"] = ["world", "business", "politics"]
+
+        headlines = news_extractor.extract_from_all_sources(
+            categories=categories,
+            limit_per_source=news_settings["articles_per_source"]
+        )
+        inserted_count = store_to_mongodb(
+            headlines,
+            mongo_client,
+            settings["mongodb"]["database"],
+            "raw_news_articles"
+        )
+        logger.info(f"Inserted {inserted_count} news articles into MongoDB.")
+    except Exception as e:
+        logger.error(f"Error extracting or storing news articles: {str(e)}")
 
         logger.info("Data extraction and storage completed successfully.")
 
