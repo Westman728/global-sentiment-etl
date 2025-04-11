@@ -24,11 +24,12 @@ class RedditExtractor:
                 credential = yaml.safe_load(file)
 
                 self.client = praw.Reddit(
-                    client_id=credential["client_id"],
-                    client_secret=credential["client_secret"],
-                    user_agent=credential["user_agent"],
-                    username=credential.get("username", ""),    # tuple for conditional access to username/password
-                    password=credential.get("password", ""),
+                    client_id=credential["reddit"]["client_id"],
+                    client_secret=credential["reddit"]["client_secret"],
+                    user_agent=credential["reddit"]["user_agent"],
+                    username=credential["reddit"].get("username", ""),    # tuple for conditional access to username/password
+                    password=credential["reddit"].get("password", ""),
+                    read_only=True
                 )
                 logger.info("Connected to Reddit API successfully.")
         except Exception as e:
@@ -63,15 +64,15 @@ class RedditExtractor:
         data = []
         for post in posts:
             data.append({
-                "id": post.id,
-                "title": post.title,
-                "text": post.selftext,
+                "id": str(post.id),
+                "title": str(post.title),
+                "text": str(post.selftext),
                 "created_utc": datetime.fromtimestamp(post.created_utc),
-                "score": post.score,
-                "num_comments": post.num_comments,
-                "url": post.url,
+                "score": int(post.score),
+                "num_comments": int(post.num_comments),
+                "url": str(post.url),
                 "author": str(post.author),
-                "subreddit": subreddit_name,
+                "subreddit": str(subreddit_name),
                 "source": "reddit",
             })
         return pd.DataFrame(data)
