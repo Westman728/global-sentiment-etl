@@ -1,208 +1,147 @@
 import logging
-import tweepy
 import yaml
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import tweepy
+import time
 
 logger = logging.getLogger(__name__)
 
-class TwitterExtractor:
-    """A class to extract tweets using Tweepy."""
+class TwitterExtractorMinimal:
+    """A minimal Twitter data extractor designed for the strict limitations of the free tier.
+    Only fetches the most recent tweets for a keyword in a single run (limited to 100 posts/month).
+    """
 
     def __init__(self, config_path=None):
         """Initialize the TwitterExtractor with Tweepy credentials."""
-
         self.config_path = config_path or Path("config/credentials.yaml")
         self.client = None
         self.connect()
 
     def connect(self):
-        """Establish a connection to the Twitter API using Tweepy."""
+        """Establish a connection to the Twitter API v2 using Tweepy."""
         try:
             with open(self.config_path, 'r') as file:
                 credentials = yaml.safe_load(file)["twitter"]
 
-                auth = tweepy.OAuth1UserHandler(
-                    credentials["api_key"],
-                    credentials["api_secret"],
-                    credentials["access_token"],
-                    credentials["access_token_secret"],
-                )
-
-                self.client = tweepy.API(auth, wait_on_rate_limit=True)
-                self.client.verify_credentials()
-                logger.info("Connected to Twitter API successfully.")
-        except Exception as e:
-            logger.error(f"Error connecting to Twitter API: {str(e)}")
-            raise
-    
-    def search_tweets(self, query, count=100, lang="en", include_retweets=False):
-        """Search for tweets based o a query.
-        
-        Args: 
-            query (str): The search query.
-            count (int): The maximum number of tweets to retrieve.
-            lang (str): The language of the tweets to retrieve.
-            include_retweets (bool): Whether to include retweets in the results.
+            self.client = tweepy.Client(
+                bearer_token=credentials.get("bearer_token", None),
+                consumer_key=credentials.get("api_key"),
+                consumer_secret=credentials.get("api_secret"),
+                access_token=credentials.get("access_token"),
+                access_token_secret=credentials.get("access_token_secret"),
+                wait_on_rate_limit=True
+            )
             
-            Returns:
-                pd.DataFrame: A DataFrame containing the retrieved tweets.
-        """
-        logger.info(f"Searching for tweets with query: {query}, count: {count}, lang: {lang}, include_retweets: {include_retweets}")
-
-        if not include_retweets:
-            query = f"{query} -filter:retweets"
-
-        try:
-            tweets = tweepy.Cursor(
-                self.client.search_tweets,
-                q=query,
-                lang=lang,
-                tweet_mode="extended",
-            ).items(count)
-
-            data = []
-            for tweet in tweets:
-                location = None
-                if tweet.user.location:
-                    location = tweet.user.location
-
-                if hasattr(tweet, "full_text"):
-                    text = tweet.full_text
-                else:
-                    text = tweet.text
-
-                data.append({
-                    "id": tweet.id,
-                    "text": text,
-                    "created_at": tweet.created_at,
-                    "user_name": tweet.user.screen_name,
-                    "user_followers": tweet.user.followers_count,
-                    "retweet_count": tweet.retweet_count,
-                    "favorite_count": tweet.favorite_count,
-                    "location": location,
-                    "query": query,
-                    "source": "twitter",
-                })
-            return pd.DataFrame(data)
+            self.client.get_me()
+            logger.info("Connected to Twitter API v2 successfully.")
         except Exception as e:
-            logger.error(f"Error searching for tweets: {str(e)}")
+            logger.error(f"Error connecting to Twitter API v2: {str(e)}")
             raise
 
-    def search_multiple_terms(self, search_terms, count_per_term=100, lang="en", include_retweets=False):
-        """Search for tweets based on multiple search terms.
+    def fetch_tweets_for_keyword(self, keyword, max_results=100, include_retweets=False):
+        """Fetch the most recent tweets for a specific keyword.
         
         Args:
-            search_terms (list): A list of search terms.
-            count_per_term (int): The maximum number of tweets to retrieve for each term.
-            lang (str): The language of the tweets to retrieve.
-            include_retweets (bool): Whether to include retweets in the results.
+            keyword (str): The keyword to search for.
+            max_results (int): Maximum number of tweets to retrieve (max 100).
+            include_retweets (bool): Whether to include retweets.
             
-            Returns:
-                pd.DataFrame: A DataFrame containing the retrieved tweets for all search terms.
-        """
-        all_tweets = pd.DataFrame()
-
-        for term in search_terms:
-            try:
-                tweets = self.search_tweets(term, count_per_term, lang, include_retweets)
-                all_tweets = pd.concat([all_tweets, tweets], ignore_index=True)
-                logger.info(f"Retrieved {len(tweets)} tweets for term: {term}")
-            except Exception as e:
-                logger.error(f"Error retrieving tweets for term {term}: {str(e)}")
-
-        return all_tweets
-    
-    def get_user_timeline(self, username, count=100, include_retweets=False):
-        """Get the user timeline for a specific user.
-        
-        Args:
-        username (str): The Twitter username.
-        count (int): The maximum number of tweets to retrieve.
-        include_retweets (bool): Whether to include retweets in the results.
-        
         Returns:
-        pd.DataFrame: A DataFrame containing the user's tweets.
+            pd.DataFrame: DataFrame containing the collected tweets.
         """
-        logger.info(f"Getting {count} tweets from user timeline: {username}")
+        logger.info(f"Fetching up to {max_results} tweets for keyword: '{keyword}'")
 
+        if max_results < 10:
+            logger.warning("Max results must be at least 10. Defaulting to 10.")
+            max_results = 10
+        elif max_results > 100:
+            logger.warning("Max results cannot exceed 100. Defaulting to 100.")
+            max_results = 100
+        
+        query = keyword
+        if not include_retweets:
+            query = f"{keyword} -is:retweet"
+        
         try:
-            tweets = tweepy.Cursor(
-                self.client.user_timeline,
-                screen_name=username,
-                tweet_mode="extended",
-                include_rts=include_retweets,
-            ).items(count)
+            tweet_fields = ["created_at", "public_metrics", "author_id", "source"]
+            user_fields = ["username", "name", "public_metrics", "location"]
+            
+            response = self.client.search_recent_tweets(
+                query=query,
+                max_results=min(max_results, 100),  # 100 max per request (limited to 100 posts/month)
+                tweet_fields=tweet_fields,
+                user_fields=user_fields,
+                expansions=["author_id"]
+            )
+            
+            if not response.data:
+                logger.warning(f"No tweets found for keyword: {keyword}")
+                return pd.DataFrame()
+            
+
+            users = {user.id: user for user in response.includes["users"]} if "users" in response.includes else {}
+            
 
             data = []
-            for tweet in tweets:
-                if hasattr(tweet, "full_text"):
-                    text = tweet.full_text
-                else:
-                    text = tweet.text
+            for tweet in response.data:
+                user = users.get(tweet.author_id)
                 
                 data.append({
                     "id": tweet.id,
-                    "text": text,
+                    "text": tweet.text,
                     "created_at": tweet.created_at,
-                    "user_name": username,
-                    "retweet_count": tweet.retweet_count,
-                    "favorite_count": tweet.favorite_count,
-                    "source": "twitter",
-                    "type": "user_timeline",
+                    "user_id": tweet.author_id,
+                    "user_name": user.username if user else None,
+                    "user_followers": user.public_metrics["followers_count"] if user else None,
+                    "retweet_count": tweet.public_metrics["retweet_count"],
+                    "reply_count": tweet.public_metrics["reply_count"],
+                    "like_count": tweet.public_metrics["like_count"],
+                    "quote_count": tweet.public_metrics["quote_count"],
+                    "location": user.location if user and hasattr(user, "location") else None,
+                    "keyword": keyword,
+                    "source": "twitter"
                 })
-
+            
+            logger.info(f"Successfully retrieved {len(data)} tweets for keyword: '{keyword}'")
             return pd.DataFrame(data)
-        except Exception as e:
-            logger.error(f"Error getting user timeline: {str(e)}")
-            raise
-    
-    def get_trending_topics(self, woeid=1):
-        """Get trending topics for a specific location.
         
-        Args:
-        woeid (int): The WOEID of the location (default is 1 for worldwide).
-        
-        Returns:
-        pd.DataFrame: A DataFrame containing the trending topics.
-        """
-        logger.info(f"Getting trending topics for WOEID: {woeid}")
-
-        try:
-            trends = self.client.get_place_trends(woeid)[0]
-            data = []
-            for trend in trends["trends"]:
-                data.append({
-                    "name": trend["name"],
-                    "url": trend["url"],
-                    "tweet_volume": trend["tweet_volume"],
-                    "timestamp": datetime.now(),
-                    "woeid": woeid,
-                    "source": "twitter",
-                    "type": "trending_topic",
-                })
-            return pd.DataFrame(data)
         except Exception as e:
-            logger.error(f"Error getting trending topics: {str(e)}")
+            logger.error(f"Error fetching tweets for keyword '{keyword}': {str(e)}")
             raise
 
-if __name__ == "main":
+def main():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    # Tests
-    extractor = TwitterExtractor()
-
-    tweets = extractor.search_multiple_terms(
-        ["climate change", "politics"],
-        count_per_term=5,
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     )
-    print(f"Retrieved {len(tweets)} tweets")
-    print(tweets.head())
 
-    trends = extractor.get_trending_topics()
-    print(f"Retrieved {len(trends)} trending topics")
-    print(trends.head())
+    try:
+        extractor = TwitterExtractorMinimal()
+        
+        keyword = "politics"
+        tweets = extractor.fetch_tweets_for_keyword(
+            keyword=keyword,
+            max_results=10 
+        )
+        
+        print(f"Extracted {len(tweets)} tweets for keyword '{keyword}'.")
+        
+        if not tweets.empty:
+            print("\nSample tweet information:")
+            print(f"Tweet text: {tweets.iloc[0]['text'][:100]}...")
+            print(f"Author: @{tweets.iloc[0]['user_name']}")
+            print(f"Created at: {tweets.iloc[0]['created_at']}")
+            print(f"Likes: {tweets.iloc[0]['like_count']}")
+            
+            print(f"\nAvailable data columns: {', '.join(tweets.columns.tolist())}")
+    except Exception as e:
+        print(f"Error demonstrating Twitter extractor: {str(e)}")
+        print("Note: This module is primarily meant to be imported, not run directly.")

@@ -5,7 +5,7 @@ from datetime import datetime
 from pymongo import MongoClient
 
 from extractors.reddit_extractor import RedditExtractor
-from extractors.twitter_extractor import TwitterExtractor
+from extractors.twitter_extractor import TwitterExtractorMinimal
 from extractors.news_extractor import NewsExtractor
 
 def setup_logging():
@@ -75,35 +75,36 @@ def main():
 
     # twitter extraction
     try:
-        twitter_extractor = TwitterExtractor()
+        twitter_extractor = TwitterExtractorMinimal()
         twitter_settings = settings["twitter"]
 
-        tweets = twitter_extractor.search_multiple_terms(
-            search_terms=twitter_settings["search_terms"],
-            count_per_term=twitter_settings["tweets_per_term"],
-            include_retweets=twitter_settings["include_retweets"],
-        )
-        inserted_count = store_to_mongodb(
-            tweets,
-            mongo_client,
-            settings["mongodb"]["database"],
-            "raw_twitter_posts"
-        )
+        if twitter_settings["search_terms"]:
+            primary_term = twitter_settings["search_terms"][0]
+            logger.info(f"Using primary term: {primary_term}")
 
-        logger.info(f"Inserted {inserted_count} Twitter posts into MongoDB.")
+            tweets = twitter_extractor.fetch_tweets_for_keyword(
+                keyword = primary_term,
+                max_results = min(twitter_settings["tweets_per_term"], 100),
+                include_retweets = twitter_settings["include_retweets"]
+            )
 
-        trends = twitter_extractor.get_trending_topics()
-        inserted_count = store_to_mongodb(
-            trends,
-            mongo_client,
-            settings["mongodb"]["database"],
-            "raw_trending_topics"
-        )
-        logger.info(f"Inserted {inserted_count} trending topics into MongoDB.")
+            inserted_count = store_to_mongodb(
+                tweets,
+                mongo_client,
+                settings["mongodb"]["database"],
+                "raw_twitter_posts"
+            )
+
+            logger.info(f"Inserted {inserted_count} for {primary_term} Twitter posts into MongoDB.")
+
+            if len(twitter_settings["search_terms"]) > 1:
+                skipped_terms = twitter_settings["search_terms"][1:]
+                logger.info(f"Skipping terms: {skipped_terms}")
+        else:
+            logger.warning("No search terms provided. Skipping Twitter extraction.")
 
     except Exception as e:
         logger.error(f"Error extracting or storing Twitter posts: {str(e)}")
-        
     
     # news extraction
     try:

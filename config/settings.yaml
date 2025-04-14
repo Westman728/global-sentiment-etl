@@ -17,8 +17,8 @@ reddit:
   # Twitter extraction settings
 twitter:
   search_terms:
-    - "climate change"
     - "politics"
+    - "climate change"
     - "economy"
     - "trump"
     - "technology"
