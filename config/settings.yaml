@@ -30,4 +30,7 @@ news:
     - "bbc.com"
     - "cnn.com"
     - "reuters.com"
+  categories:
+    bbc: ["news", "business", "innovation"]
+    cnn: ["world", "business", "politics"]
   articles_per_source: 20
