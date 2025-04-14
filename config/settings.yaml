@@ -1,0 +1,36 @@
+# MongoDB settings
+mongodb:
+  connection_string: "mongodb://localhost:27017/"
+  database: "global_sentiment"
+
+# Reddit extraction settings
+reddit:
+  subreddits:
+    - "worldnews"
+    - "news"
+    - "politics"
+    - "technology"
+    - "science"
+  posts_per_subreddit: 100
+  sort: "hot"
+
+  # Twitter extraction settings
+twitter:
+  search_terms:
+    - "politics"
+    - "climate change"
+    - "economy"
+    - "trump"
+    - "technology"
+  tweets_per_term: 100
+  include_retweets: false
+
+news:
+  sources:
+    - "bbc.com"
+    - "cnn.com"
+    - "reuters.com"
+  categories:
+    bbc: ["news", "business", "innovation"]
+    cnn: ["world", "business", "politics"]
+  articles_per_source: 20
