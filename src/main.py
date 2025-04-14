@@ -7,6 +7,7 @@ from pymongo import MongoClient
 from extractors.reddit_extractor import RedditExtractor
 from extractors.twitter_extractor import TwitterExtractorMinimal
 from extractors.news_extractor import NewsExtractor
+from transformers.sentiment_transformer import SentimentTransformer
 
 def setup_logging():
     """Configure logging settings for the app"""
@@ -135,6 +136,34 @@ def main():
         logger.error(f"Error extracting or storing news articles: {str(e)}")
 
         logger.info("Data extraction and storage completed successfully.")
+    
+    # Sentiment Analysis
+    try:
+        logger.info("Starting sentiment analysis...")
+        sentiment_transformer = SentimentTransformer()
+
+        unified_sentiment_data = sentiment_transformer.transform_all_sources(
+            reddit_posts,
+            tweets,
+            headlines
+        )
+
+        if not unified_sentiment_data.empty:
+            sentiment_count = store_to_mongodb(
+                unified_sentiment_data,
+                mongo_client,
+                settings["mongodb"]["database"],
+                "sentiment_analysis" # collection name in MongoDB
+            )
+
+            logger.info(f"Inserted {sentiment_count} sentiment analysis results into MongoDB.")
+        else:
+            logger.warning("No sentiment analysis data to store.")
+
+    except Exception as e:
+        logger.error(f"Error performing sentiment analysis: {str(e)}")
+
+    logger.info(f"Data extraction, transformation, and storage completed successfully.")
 
 if __name__ == "__main__":
     main()
