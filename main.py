@@ -79,6 +79,11 @@ def main():
     try:
         twitter_extractor = TwitterExtractorMinimal()
         twitter_settings = settings["twitter"]
+        tweets = pd.DataFrame(columns=[
+            'id', 'text', 'created_at', 'user_id', 'user_name', 'user_followers',
+            'retweet_count', 'reply_count', 'like_count', 'quote_count',
+            'location', 'keyword', 'source'
+        ])
 
         # skip if tweets_per_term = 0
         if twitter_settings["tweets_per_term"] == 0:
@@ -111,6 +116,11 @@ def main():
 
     except Exception as e:
         logger.error(f"Error extracting or storing Twitter posts: {str(e)}")
+        tweets = pd.DataFrame([
+            'id', 'text', 'created_at', 'user_id', 'user_name', 'user_followers',
+            'retweet_count', 'reply_count', 'like_count', 'quote_count',
+            'location', 'keyword', 'source'
+        ])
     
     # news extraction
     try:
@@ -146,8 +156,28 @@ def main():
         logger.info("Starting sentiment analysis...")
         sentiment_transformer = SentimentTransformer()
 
+        logger.info(f"Reddit data type: {type(reddit_posts)}")
+        logger.info(f"Reddit data type: {type(tweets)}")
+        logger.info(f"Reddit data type: {type(headlines)}")
+
+        if 'tweets' in locals():
+            logger.info(f"Twitter data empty? {tweets.empty if hasattr(tweets, 'empty') else 'Not a DataFrame'}")
+
+        try:
+            if ("tweets" in locals() and not tweets.empty):
+                logger.info("TRANSFORMING TWITTER DATA...")
+                twitter_result = sentiment_transformer.transform_twitter_data(tweets)
+                logger.info("TWITTER TRANSFORM SUCCESSFUL")
+        except Exception as e:
+            logger.error(f"ERROR IN TWITTER TRANSFORMATION: {str(e)}")
+
         reddit_posts = reddit_posts if "reddit_posts" in locals() else pd.DataFrame()
-        tweets = tweets if "tweets" in locals() else pd.DataFrame()
+        if not ("tweets" in locals() and tweets is not None):
+            tweets = pd.DataFrame(columns=[
+                'id', 'text', 'created_at', 'user_id', 'user_name', 'user_followers',
+                'retweet_count', 'reply_count', 'like_count', 'quote_count',
+                'location', 'keyword', 'source'
+            ])
         # if tweets is None:
         #     tweets = pd.DataFrame([{
         #         "id": "test123",
@@ -170,8 +200,12 @@ def main():
         # logger.info(f"Tweets value: {tweets.values}")
         
 
-        if reddit_posts.empty or tweets.empty or headlines.empty:
+        if reddit_posts.empty:
             raise Exception("Reddit posts, tweets or headlines are empty. Skipping transformation.")
+        # elif tweets.empty:
+        #     raise Exception("Tweets are empty. Stopping.")
+        elif headlines.empty:
+            raise Exception("Headlines are empty. Stopping.")
         else:
             unified_sentiment_data = sentiment_transformer.transform_all_sources(
                 reddit_posts,

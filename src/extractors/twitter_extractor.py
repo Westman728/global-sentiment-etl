@@ -53,7 +53,14 @@ class TwitterExtractorMinimal:
         """
         logger.info(f"Fetching up to {max_results} tweets for keyword: '{keyword}'")
 
-        if max_results < 10:
+        if max_results == 0:
+            logger.info(f"Max_results == 0, returning empty dataframe for keyword: {keyword}")
+            return pd.DataFrame({
+                'id':[], 'text':[], 'created_at':[], 'user_id':[], 'user_name':[], 'user_followers':[],
+                'retweet_count':[], 'reply_count':[], 'like_count':[], 'quote_count':[],
+                'location':[], 'keyword':[], 'source':[]
+            })
+        elif max_results > 0 and max_results < 10:
             logger.warning("Max results must be at least 10. Defaulting to 10.")
             max_results = 10
         elif max_results > 100:
@@ -78,7 +85,11 @@ class TwitterExtractorMinimal:
             
             if not response.data:
                 logger.warning(f"No tweets found for keyword: {keyword}")
-                return pd.DataFrame()
+                return pd.DataFrame(columns=[
+                    'id', 'text', 'created_at', 'user_id', 'user_name', 'user_followers',
+                    'retweet_count', 'reply_count', 'like_count', 'quote_count',
+                    'location', 'keyword', 'source'
+                ])
             
 
             users = {user.id: user for user in response.includes["users"]} if "users" in response.includes else {}

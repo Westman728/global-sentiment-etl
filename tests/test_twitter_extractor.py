@@ -3,6 +3,8 @@ from pathlib import Path
 import sys
 
 from src.extractors.twitter_extractor import TwitterExtractorMinimal
+from src.transformers.sentiment_transformer import SentimentTransformer
+sentiment_transformer = SentimentTransformer()
 
 
 logging.basicConfig(
@@ -22,10 +24,9 @@ def test_twitter_extractor_minimal():
         
         tweets = twitter_extractor.fetch_tweets_for_keyword(
             keyword=search_term,
-            max_results=10,  
+            max_results=0,  
             include_retweets=False
-        )
-        
+        )      
         if tweets is not None and not tweets.empty:
             logger.info(f"Successfully extracted {len(tweets)} tweet for '{search_term}'")
             logger.info(f"Columns: {tweets.columns.tolist()}")

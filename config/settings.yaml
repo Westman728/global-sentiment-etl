@@ -22,7 +22,7 @@ twitter:
     - "economy"
     - "trump"
     - "technology"
-  tweets_per_term: 10 # 0 for testing. Set to 100 later
+  tweets_per_term: 0 # 0 for testing. Set to 100 later
   include_retweets: false
 
 news:
