@@ -121,7 +121,15 @@ class NewsExtractor:
         """
         logger.info(f"Extracting up to {limit} CNN headlines from category '{category}'")
         
-        url = f"https://www.cnn.com/{category}"
+        cnn_category_urls = {
+            "world":"https://edition.cnn.com/world",
+            "business":"https://edition.cnn.com/business",
+            "politics":"https://edition.cnn.com/politics"
+        }
+        url = cnn_category_urls.get(category)
+        if not url:
+            logger.warning(f"URL not present for {category} - skipping")
+            return pd.DataFrame()
         
         try:
             response = requests.get(url, headers=self.headers)
