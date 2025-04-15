@@ -22,7 +22,7 @@ twitter:
     - "economy"
     - "trump"
     - "technology"
-  tweets_per_term: 100
+  tweets_per_term: 10
   include_retweets: false
 
 news:

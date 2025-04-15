@@ -136,6 +136,10 @@ class SentimentTransformer:
         Returns:
             DataFrame with unified sentiment data
         """
+        reddit_transformed = None
+        twitter_transformed = None
+        news_transformed = None
+        
         logger.info("Creating unified sentiment dataset from all sources")
         
         if reddit_transformed is None and not reddit_df.empty:

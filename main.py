@@ -4,10 +4,10 @@ from pathlib import Path
 from datetime import datetime
 from pymongo import MongoClient
 
-from extractors.reddit_extractor import RedditExtractor
-from extractors.twitter_extractor import TwitterExtractorMinimal
-from extractors.news_extractor import NewsExtractor
-from transformers.sentiment_transformer import SentimentTransformer
+from src.extractors.reddit_extractor import RedditExtractor
+from src.extractors.twitter_extractor import TwitterExtractorMinimal
+from src.extractors.news_extractor import NewsExtractor
+from src.transformers.sentiment_transformer import SentimentTransformer
 
 def setup_logging():
     """Configure logging settings for the app"""
@@ -46,7 +46,7 @@ def main():
     settings = load_settings()
     
     try:
-        mongo_client = MongoClient(settings["mongodb"]["con_string"])
+        mongo_client = MongoClient(settings["mongodb"]["connection_string"])
         logger.info("Connected to MongoDB successfully.")
     except Exception as e:
         logger.error(f"Error connecting to MongoDB: {str(e)}")
@@ -112,19 +112,18 @@ def main():
         news_extractor = NewsExtractor()
         news_settings = settings["news"]
 
-        categories ={}
-        for source in news_settings["sources"]:
-            if "bbc" in source:
-                categories["bbc"] = ["news", "business", "innovation"]
-            elif "reuters" in source:
-                categories["reuters"] = ["world", "business", "sustainability"]
-            elif "cnn" in source:
-                categories["cnn"] = ["world", "business", "politics"]
+        categories = news_settings.get("categories", None)
+        if categories is None:
+            raise Exception("Failed to fetch news categories from settings.")
 
         headlines = news_extractor.extract_from_all_sources(
             categories=categories,
             limit_per_source=news_settings["articles_per_source"]
         )
+        # remove duplicates and assign back to headlines
+        headlines_deduped = headlines.drop_duplicates(subset=["title", "url"], keep="first")
+        logger.info(f"Removed {len(headlines) - len(headlines_deduped)} duplicate news articles.")
+        headlines = headlines_deduped
         inserted_count = store_to_mongodb(
             headlines,
             mongo_client,
