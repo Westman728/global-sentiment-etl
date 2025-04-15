@@ -3,6 +3,7 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 from pymongo import MongoClient
+import pandas as pd
 
 from src.extractors.reddit_extractor import RedditExtractor
 from src.extractors.twitter_extractor import TwitterExtractorMinimal
@@ -44,7 +45,7 @@ def main():
     logger = logging.getLogger(__name__)
 
     settings = load_settings()
-    
+    logger.info("Start of script ---------------------")
     try:
         mongo_client = MongoClient(settings["mongodb"]["connection_string"])
         logger.info("Connected to MongoDB successfully.")
@@ -79,7 +80,11 @@ def main():
         twitter_extractor = TwitterExtractorMinimal()
         twitter_settings = settings["twitter"]
 
-        if twitter_settings["search_terms"]:
+        # skip if tweets_per_term = 0
+        if twitter_settings["tweets_per_term"] == 0:
+            logger.info("Skipping Twitter extraction (tweets_per_term = 0).")
+
+        elif twitter_settings["search_terms"]:
             primary_term = twitter_settings["search_terms"][0]
             logger.info(f"Using primary term: {primary_term}")
 
@@ -141,11 +146,38 @@ def main():
         logger.info("Starting sentiment analysis...")
         sentiment_transformer = SentimentTransformer()
 
-        unified_sentiment_data = sentiment_transformer.transform_all_sources(
-            reddit_posts,
-            tweets,
-            headlines
-        )
+        reddit_posts = reddit_posts if "reddit_posts" in locals() else pd.DataFrame()
+        tweets = tweets if "tweets" in locals() else pd.DataFrame()
+        # if tweets is None:
+        #     tweets = pd.DataFrame([{
+        #         "id": "test123",
+        #     "text": "Test tweet for dry run.",
+        #     "created_at": datetime.now(),
+        #     "user_id": "u1",
+        #     "user_name": "testuser",
+        #     "user_followers": 0,
+        #     "retweet_count": 0,
+        #     "reply_count": 0,
+        #     "like_count": 0,
+        #     "quote_count": 0,
+        #     "location": "Internet",
+        #     "keyword": "test",
+        #     "source": "twitter"
+        # }])
+        headlines = headlines if "headlines" in locals() else pd.DataFrame()
+        
+        logger.info(f"Reddit post length: {len(reddit_posts)}!!! Tweets length: {len(tweets)}, Type: {type(tweets)}!!! Headlines: {len(headlines)}, Type: {type(headlines)}")
+        # logger.info(f"Tweets value: {tweets.values}")
+        
+
+        if reddit_posts.empty or tweets.empty or headlines.empty:
+            raise Exception("Reddit posts, tweets or headlines are empty. Skipping transformation.")
+        else:
+            unified_sentiment_data = sentiment_transformer.transform_all_sources(
+                reddit_posts,
+                tweets,
+                headlines
+            )
 
         if not unified_sentiment_data.empty:
             sentiment_count = store_to_mongodb(
@@ -159,10 +191,12 @@ def main():
         else:
             logger.warning("No sentiment analysis data to store.")
 
+        logger.info(f"Data extraction, transformation, and storage completed successfully.")
+
     except Exception as e:
         logger.error(f"Error performing sentiment analysis: {str(e)}")
-
-    logger.info(f"Data extraction, transformation, and storage completed successfully.")
+    
+    logger.info("End of script ---------------------")
 
 if __name__ == "__main__":
     main()
