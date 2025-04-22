@@ -68,7 +68,7 @@ def test_topic_modeling():
 
         logger.info("Topics discovered:")
         for i in range(topic_modeler.n_topics):
-            keywords = topic_modeler.get_top_keywords(i)
+            keywords = topic_modeler.get_topic_keywords(i)
             logger.info(f"Topic {i}: {', '.join(keywords[:5])}")
 
         logger.info("ASsigning topics to texts...")
@@ -78,7 +78,7 @@ def test_topic_modeling():
         results_df["source"] = ["reddit"] * len(reddit_posts) + ["news"] * len(headlines)
 
         topic_distribution = pd.crosstab(
-            results_df["topic"],
+            results_df["topic_id"],
             results_df["source"],
         )
 
@@ -103,9 +103,6 @@ def test_topic_modeling():
         logger.info("Topic modeling test completed successfully.")
         return True
     except Exception as e:
-        print(f"Type: {type(topic_modeler)}")
-        print(f"Dir: {dir(topic_modeler)}")
-        print(f"Attributes: {vars(topic_modeler)}")
         logger.error(f"Error during topic modeling: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
