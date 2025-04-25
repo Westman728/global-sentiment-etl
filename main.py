@@ -280,6 +280,11 @@ def main():
                         unified_sentiment_data.at[i, "topic_confidence"] = text_to_topic[text]["topic_confidence"]
                         unified_sentiment_data.at[i, "topic_keywords"] = ",".join(text_to_topic[text]["topic_keywords"][:5])
                 
+                # remove duplicates
+                unified_sentiment_data = unified_sentiment_data.drop_duplicates(subset=["source", "source_id"])
+
+                
+
                 if not unified_sentiment_data.empty:
                     sentiment_count = store_to_mongodb(
                         unified_sentiment_data,
