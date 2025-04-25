@@ -1,9 +1,9 @@
-# MongoDB settings
+# MongoDB settings - present in credentials.yaml
 mongodb:
-  connection_string: "mongodb://localhost:27018"
-  database: "global_sentiment"
+  connection_string: "port-to-mongodb"
+  database: "db-name"
   volumes:
-    - "mongodb-data:/data/db"
+    - "path-to-mongodb-data" # Optional
 
 # Reddit extraction settings
 reddit:
