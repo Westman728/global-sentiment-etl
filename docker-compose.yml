@@ -3,7 +3,7 @@ services:
     image: mongo:latest
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - "27018:27017"
     command: mongod --bind_ip_all
     volumes:
       - mongodb_data:/data/db

@@ -212,23 +212,109 @@ def main():
                 tweets,
                 headlines
             )
+        # if not unified_sentiment_data.empty:
+        #     sentiment_count = store_to_mongodb(
+        #         unified_sentiment_data,
+        #         mongo_client,
+        #         settings["mongodb"]["database"],
+        #         "sentiment_analysis" # collection name in MongoDB
+        #     )
 
-        if not unified_sentiment_data.empty:
-            sentiment_count = store_to_mongodb(
-                unified_sentiment_data,
-                mongo_client,
-                settings["mongodb"]["database"],
-                "sentiment_analysis" # collection name in MongoDB
-            )
-
-            logger.info(f"Inserted {sentiment_count} sentiment analysis results into MongoDB.")
-        else:
-            logger.warning("No sentiment analysis data to store.")
+        #     logger.info(f"Inserted {sentiment_count} sentiment analysis results into MongoDB.")
+        # else:
+        #     logger.warning("No sentiment analysis data to store.")
 
         logger.info(f"Data extraction, transformation, and storage completed successfully.")
 
     except Exception as e:
         logger.error(f"Error performing sentiment analysis: {str(e)}")
+    
+    # Topic modeling
+
+    try:
+        logger.info("Starting topic modeling...")
+        from src.transformers.topic_transformer import TopicModeler
+        
+        all_texts = []
+
+        if "reddit_posts" in locals() and not reddit_posts.empty:
+            all_texts.extend(reddit_posts["title"].tolist())
+            logger.info(f"Reddit titles added to topic modeling: {len(reddit_posts['title'])} titles.")
+        
+        if "tweets" in locals() and not tweets.empty:
+            all_texts.extend(tweets["text"].tolist())
+            logger.info(f"Twitter texts added to topic modeling: {len(tweets['text'])} texts.")
+        
+        if "headlines" in locals() and not headlines.empty:
+            all_texts.extend(headlines["title"].tolist())
+            logger.info(f"News titles added to topic modeling: {len(headlines['title'])} titles.")
+        
+        if len(all_texts) > 10:
+            topic_modeler = TopicModeler(n_topics=5)
+            logger.info(f"Fitting model on {len(all_texts)} texts...")
+            topic_modeler.fit(all_texts)
+
+            logger.info("Topics discovered:")
+            for i in range(topic_modeler.n_topics):
+                keywords = topic_modeler.get_topic_keywords(i)
+                logger.info(f"Topic {i}: {', '.join(keywords[:5])}")
+
+            topic_results = topic_modeler.transform(all_texts)
+
+            text_to_topic = {result["text"]: {
+                "topic_id": result["topic_id"],
+                "topic_confidence": result["topic_confidence"],
+                "topic_keywords": result["topic_keywords"],
+                "topic_name": topic_modeler.get_topic_name(result["topic_id"]),
+            } for result in topic_results}
+            
+            if "unified_sentiment_data" in locals() and not unified_sentiment_data.empty:
+                unified_sentiment_data["topic_id"] = -1
+                unified_sentiment_data["topic_confidence"] = 0.0
+                unified_sentiment_data["topic_keywords"] = "Unknown"
+
+                for i, row in unified_sentiment_data.iterrows():
+                    text = row["text"]
+                    if text in text_to_topic:
+                        unified_sentiment_data.at[i, "topic_id"] = text_to_topic[text]["topic_id"]
+                        unified_sentiment_data.at[i, "topic_confidence"] = text_to_topic[text]["topic_confidence"]
+                        unified_sentiment_data.at[i, "topic_keywords"] = ",".join(text_to_topic[text]["topic_keywords"][:5])
+                
+                # remove duplicates
+                unified_sentiment_data = unified_sentiment_data.drop_duplicates(subset=["source", "source_id"])
+
+                
+
+                if not unified_sentiment_data.empty:
+                    sentiment_count = store_to_mongodb(
+                        unified_sentiment_data,
+                        mongo_client,
+                        settings["mongodb"]["database"],
+                        "sentiment_analysis" # collection name in MongoDB
+                    )
+
+                    logger.info(f"Inserted {sentiment_count} sentiment analysis results into MongoDB.")
+                
+                topic_info = [{
+                    "topic_id" : i,
+                    "topic_name" : topic_modeler.get_topic_name(i),
+                    "topic_keywords" : topic_modeler.get_topic_keywords(i),
+                    "created_at" : datetime.now()
+                } for i in range(topic_modeler.n_topics)]
+
+                topics_collection = mongo_client[settings["mongodb"]["database"]]["topics"]
+                topics_collection.insert_many(topic_info)
+                logger.info(f"Inserted {len(topic_info)} topic information into MongoDB.")
+            else:
+                logger.warning("No unified sentiment data to store topic information.")
+            logger.info("Topic modeling completed successfully.")
+        else:
+            logger.warning(f"Not enough data for topic modeling. Need at least 10 titles. Got {len(all_texts)} titles.")
+    except Exception as e:
+        logger.error(f"Error performing topic modeling: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+
     
     logger.info("End of script ---------------------")
 

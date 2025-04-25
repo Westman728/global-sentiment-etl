@@ -1,7 +1,9 @@
 # MongoDB settings
 mongodb:
-  connection_string: "mongodb://host.docker.internal:27017/"
+  connection_string: "mongodb://localhost:27018"
   database: "global_sentiment"
+  volumes:
+    - "mongodb-data:/data/db"
 
 # Reddit extraction settings
 reddit:
@@ -11,7 +13,7 @@ reddit:
     - "politics"
     - "technology"
     - "science"
-  posts_per_subreddit: 5
+  posts_per_subreddit: 10
   sort: "hot"
 
   # Twitter extraction settings
