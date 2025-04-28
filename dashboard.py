@@ -2,9 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.figure_factory as ff
 from pymongo import MongoClient
 import yaml
 from datetime import datetime, timedelta
+import networkx as nx
+import matplotlib.pyplot as plt
 
 # connecting to MongoDB
 @st.cache_resource
@@ -36,7 +39,7 @@ with st.spinner("Loading data..."):
     df = load_sentiment_data()
     st.success("Data loaded successfully!")
 
-# doublecheck data is loaded
+# ensure data is loaded
 if df.empty:
     st.error("No data found in the MongoDB collection. Did you run the data pipeline?")
 else:
@@ -112,14 +115,16 @@ else:
 
     # topic keywords
     st.subheader("Topic Keywords")
-    topics_collection = db["topic_keywords"]
+    topics_collection = db["topics"]
     topics_data = list(topics_collection.find())
     topics_df = pd.DataFrame(topics_data)
+
+    
 
     if not topics_df.empty:
         for _, topic in topics_df.iterrows():
             topic_id = topic["topic_id"]
-            keywords = ", ".join(topic["keywords"][:10])
+            keywords = ", ".join(topic["topic_keywords"][:10])
             st.write(f"**Topic {topic_id}**: {keywords}")
         
     st.subheader("Recent content with sentiment")
@@ -133,3 +138,110 @@ else:
                     f"<strong>Topic:</strong> {row['topic_id']} | "
                     f"<strong>Sentiment:</strong> {sentiment:.2f}</p></div>", 
                     unsafe_allow_html=True)
+    
+    
+    # topic heatmap
+    topic_terms = []
+    for _, topic in topics_df.iterrows():
+        topic_id = topic["topic_id"]
+        for i, keyword in enumerate(topic["topic_keywords"][:10]):
+            score = 10 - i
+            topic_terms.append({"topic_id": topic_id, "keyword": keyword, "score": score})
+
+    topic_terms_df = pd.DataFrame(topic_terms)
+
+
+    # fig_heatmap = px.density_heatmap(
+    #     topic_terms_df,
+    #     x="topic_id",
+    #     y="keyword",
+    #     z="score",
+    #     color_continuous_scale="Viridis",
+    #     title="Topic Heatmap",
+    #     nbinsx=6,
+    # )
+
+    # st.plotly_chart(fig_heatmap, use_container_width=True)
+
+    # topic-keyword network
+    st.subheader("Topic-Keyword Network")
+    threshold = 5
+    strong_connections = topic_terms_df[topic_terms_df['score'] >= threshold]
+
+    G = nx.Graph()
+
+    topic_sentiment = sentiment_by_topic.set_index("topic_id")["sentiment_compound"].to_dict()
+
+    for topic_id in strong_connections['topic_id'].unique():
+        sentiment_value = topic_sentiment.get(topic_id, 0)
+        G.add_node(f"Topic {topic_id}", type='topic')
+        
+    for keyword in strong_connections['keyword'].unique():
+        G.add_node(keyword, type='keyword')
+
+    for _, row in strong_connections.iterrows():
+        G.add_edge(
+            f"Topic {row['topic_id']}", 
+            row['keyword'], 
+            weight=row['score']
+        )
+
+    pos = nx.spring_layout(G, k=0.3, iterations=50, seed=44)
+
+    plt.figure(figsize=(12, 10))
+    topic_nodes = [node for node in G.nodes() if 'Topic' in node]
+    keyword_nodes = [node for node in G.nodes() if 'Topic' not in node]
+
+    topic_sentiment_values = [G.nodes[node].get("sentiment", 0) for node in topic_nodes]
+    sentiment_cmap = plt.cm.RdYlGn
+    normalized_values = [(val + 1) /2 for val in topic_sentiment_values]
+    colors = [sentiment_cmap(val) for val in normalized_values]
+
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=topic_nodes,
+        node_color=colors,
+        node_size=500,
+        alpha=0.8,
+    )
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=keyword_nodes,
+        node_color='blue',
+        node_size=200,
+        alpha=0.6,
+    )
+
+    # nx.draw_networkx_nodes(G, pos, nodelist=topic_nodes, node_color='red', node_size=500, alpha=0.8)
+    # nx.draw_networkx_nodes(G, pos, nodelist=keyword_nodes, node_color='blue', node_size=300, alpha=0.6)
+
+    edges = G.edges(data=True)
+    weights = [data['weight'] for _, _, data in edges]
+    nx.draw_networkx_edges(G, pos, width=weights, alpha=0.5)
+
+    nx.draw_networkx_labels(
+        G,
+        {k: (v[0], v[1] - 0.05) for k, v in pos.items()},
+        font_size=12,
+        font_family="monospace",
+        bbox=dict(facecolor='white', alpha=0.5, edgecolor='black', boxstyle='round,pad=0.3'),
+    )
+
+    norm = plt.Normalize(-1, 1)
+    sm = plt.cm.ScalarMappable(cmap=sentiment_cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=plt.gca())
+    cbar.set_label("Sentiment Score")
+
+    plt.axis('off')
+
+    sentiment_legend = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Positive Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', markersize=10, label='Neutral Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Negative Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='skyblue', markersize=10, label='Keyword')
+    ]
+
+    st.pyplot(plt)
