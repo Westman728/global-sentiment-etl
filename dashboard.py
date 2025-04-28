@@ -170,7 +170,10 @@ else:
 
     G = nx.Graph()
 
+    topic_sentiment = sentiment_by_topic.set_index("topic_id")["sentiment_compound"].to_dict()
+
     for topic_id in strong_connections['topic_id'].unique():
+        sentiment_value = topic_sentiment.get(topic_id, 0)
         G.add_node(f"Topic {topic_id}", type='topic')
         
     for keyword in strong_connections['keyword'].unique():
@@ -189,8 +192,30 @@ else:
     topic_nodes = [node for node in G.nodes() if 'Topic' in node]
     keyword_nodes = [node for node in G.nodes() if 'Topic' not in node]
 
-    nx.draw_networkx_nodes(G, pos, nodelist=topic_nodes, node_color='red', node_size=500, alpha=0.8)
-    nx.draw_networkx_nodes(G, pos, nodelist=keyword_nodes, node_color='blue', node_size=300, alpha=0.6)
+    topic_sentiment_values = [G.nodes[node].get("sentiment", 0) for node in topic_nodes]
+    sentiment_cmap = plt.cm.RdYlGn
+    normalized_values = [(val + 1) /2 for val in topic_sentiment_values]
+    colors = [sentiment_cmap(val) for val in normalized_values]
+
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=topic_nodes,
+        node_color=colors,
+        node_size=500,
+        alpha=0.8,
+    )
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=keyword_nodes,
+        node_color='blue',
+        node_size=200,
+        alpha=0.6,
+    )
+
+    # nx.draw_networkx_nodes(G, pos, nodelist=topic_nodes, node_color='red', node_size=500, alpha=0.8)
+    # nx.draw_networkx_nodes(G, pos, nodelist=keyword_nodes, node_color='blue', node_size=300, alpha=0.6)
 
     edges = G.edges(data=True)
     weights = [data['weight'] for _, _, data in edges]
@@ -198,12 +223,25 @@ else:
 
     nx.draw_networkx_labels(
         G,
-        pos,
+        {k: (v[0], v[1] - 0.05) for k, v in pos.items()},
         font_size=12,
         font_family="monospace",
         bbox=dict(facecolor='white', alpha=0.5, edgecolor='black', boxstyle='round,pad=0.3'),
     )
 
+    norm = plt.Normalize(-1, 1)
+    sm = plt.cm.ScalarMappable(cmap=sentiment_cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=plt.gca())
+    cbar.set_label("Sentiment Score")
+
     plt.axis('off')
+
+    sentiment_legend = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Positive Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', markersize=10, label='Neutral Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Negative Topic'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='skyblue', markersize=10, label='Keyword')
+    ]
 
     st.pyplot(plt)
