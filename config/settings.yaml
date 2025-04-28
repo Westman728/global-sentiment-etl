@@ -1,9 +1,9 @@
-# MongoDB settings
+# MongoDB settings - present in credentials.yaml
 mongodb:
-  connection_string: "mongodb://localhost:27018"
-  database: "global_sentiment"
+  connection_string: "port-to-mongodb"
+  database: "db-name"
   volumes:
-    - "mongodb-data:/data/db"
+    - "path-to-mongodb-data" # Optional
 
 # Reddit extraction settings
 reddit:
@@ -13,7 +13,7 @@ reddit:
     - "politics"
     - "technology"
     - "science"
-  posts_per_subreddit: 10
+  posts_per_subreddit: 200
   sort: "hot"
 
   # Twitter extraction settings
@@ -35,4 +35,4 @@ news:
   categories:
     bbc: ["news", "business", "innovation"]
     cnn: ["world", "business", "politics"]
-  articles_per_source: 2
+  articles_per_source: 25

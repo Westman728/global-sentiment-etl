@@ -28,8 +28,13 @@ def setup_logging():
 def load_settings():
     """Load application settings from a YAML file"""
     with open("config/settings.yaml", "r") as file:
-        return yaml.safe_load(file)
-    
+        settings = yaml.safe_load(file)
+    with open("config/credentials.yaml", "r") as file:
+        credentials = yaml.safe_load(file)
+    if "mongodb" in credentials:
+        settings["mongodb"] = credentials["mongodb"]
+
+    return settings
 def store_to_mongodb(df, mongo_client, database, collection):
     """Store DF to MongoDB"""
     records = df.to_dict(orient='records') # returns a list of dicts with each dict representing a record in the DF
