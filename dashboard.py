@@ -4,20 +4,20 @@ import numpy as np
 import plotly.express as px
 from pymongo import MongoClient
 import yaml
+from datetime import datetime, timedelta
 
 # connecting to MongoDB
 @st.cache_resource
 def get_mongo_client():
-    global settings
     with open("config/settings.yaml", "r") as file:
         settings = yaml.safe_load(file)
     with open("config/credentials.yaml", "r") as cred_file:
         credentials = yaml.safe_load(cred_file)
     if "mongodb" in settings:
         settings["mongodb"] = credentials["mongodb"]
-    return MongoClient(settings["mongodb"]["connection_string"])
+    return MongoClient(settings["mongodb"]["connection_string"]), settings
 
-client = get_mongo_client()
+client, settings = get_mongo_client()
 db = client[settings["mongodb"]["database"]]
 
 # loading data
@@ -40,17 +40,43 @@ with st.spinner("Loading data..."):
 if df.empty:
     st.error("No data found in the MongoDB collection. Did you run the data pipeline?")
 else:
+    # sidebar date filter
+    st.sidebar.header("Filter by Date")
+    if 'processed_at' in df.columns:
+        min_date = df['processed_at'].min().date()
+        max_date = df['processed_at'].max().date()
+
+        default_start = max(min_date, (max_date - timedelta(days=7)))
+
+        start_date = st.sidebar.date_input("Start Date", default_start, min_value=min_date, max_value=max_date)
+        end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
+
+        start_datetime = pd.Timestamp(start_date)
+        end_datetime = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
+        df_filtered = df[(df['processed_at'] >= start_datetime) & (df['processed_at'] <= end_datetime)]
+    else:
+        df_filtered = df.copy()
+        st.sidebar.warning("No date column found in DF. Filtering by date is disabled.")
+
+    # sidebar topic filter
+    st.sidebar.subheader("Filter by Topic")
+    topics = sorted(df["topic_id"].unique())
+    selected_topics = st.sidebar.multiselect("Select Topics", topics, default=topics)
+    if selected_topics:
+        df_filtered = df_filtered[df_filtered["topic_id"].isin(selected_topics)]
+
     # show summary
     st.subheader("Data Overview")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Posts", len(df))
-    col2.metric("Sources", len(df["source"].unique()))
-    col3.metric("Topics", len(df["topic_id"].unique()))
+    col1.metric("Total Posts", len(df_filtered))
+    col2.metric("Sources", len(df_filtered["source"].unique()))
+    col3.metric("Topics", len(df_filtered["topic_id"].unique()))
 
     # show sentiment distribution
     st.subheader("Sentiment Distribution")
     fig_sentiment = px.histogram(
-        df,
+        df_filtered,
         x="sentiment_compound",
         color="source",
         nbins=20,
@@ -61,7 +87,7 @@ else:
 
     # topic distribution
     st.subheader("Topic Distribution")
-    topic_counts = df.groupby(["topic_id", "source"]).size().reset_index(name="count")
+    topic_counts = df_filtered.groupby(["topic_id", "source"]).size().reset_index(name="count")
     fig_topics = px.bar(
         topic_counts,
         x="topic_id",
@@ -74,7 +100,7 @@ else:
 
     # sentiment by topic
     st.subheader("Sentiment by Topic")
-    sentiment_by_topic = df.groupby("topic_id")["sentiment_compound"].mean().reset_index()
+    sentiment_by_topic = df_filtered.groupby("topic_id")["sentiment_compound"].mean().reset_index()
     fig_sentiment_topic = px.bar(
         sentiment_by_topic,
         x="topic_id",
@@ -97,7 +123,7 @@ else:
             st.write(f"**Topic {topic_id}**: {keywords}")
         
     st.subheader("Recent content with sentiment")
-    recent_df = df.sort_values(by="processed_at", ascending=False).head(10)
+    recent_df = df_filtered.sort_values(by="processed_at", ascending=False).head(10)
     for _, row in recent_df.iterrows():
         sentiment = row["sentiment_compound"]
         color = "green" if sentiment > 0.05 else "red" if sentiment < -0.05 else "gray"
