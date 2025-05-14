@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from pymongo import MongoClient
 import pandas as pd
+import time
 
 from src.extractors.reddit_extractor import RedditExtractor
 from src.extractors.twitter_extractor import TwitterExtractorMinimal
@@ -95,14 +96,26 @@ def main():
             logger.info("Skipping Twitter extraction (tweets_per_term = 0).")
 
         elif twitter_settings["search_terms"]:
-            primary_term = twitter_settings["search_terms"][0]
-            logger.info(f"Using primary term: {primary_term}")
+            total_inserted = 0
+            # primary_term = twitter_settings["search_terms"][0]
+            # logger.info(f"Using primary term: {primary_term}")
 
-            tweets = twitter_extractor.fetch_tweets_for_keyword(
-                keyword = primary_term,
-                max_results = min(twitter_settings["tweets_per_term"], 100),
-                include_retweets = twitter_settings["include_retweets"]
-            )
+            for term in twitter_settings["search_terms"]:
+                logger.info(f"Fetching tweets for term: {term}")
+                
+                time.sleep(61) # rate limiting :)))
+
+                tweets = twitter_extractor.fetch_tweets_for_keyword(
+                    keyword=term,
+                    max_results=min(twitter_settings["tweets_per_term"], 100),
+                    include_retweets=twitter_settings["include_retweets"]
+                )
+
+            # tweets = twitter_extractor.fetch_tweets_for_keyword(
+            #     keyword = primary_term,
+            #     max_results = min(twitter_settings["tweets_per_term"], 100),
+            #     include_retweets = twitter_settings["include_retweets"]
+            # )
 
             inserted_count = store_to_mongodb(
                 tweets,
@@ -111,11 +124,11 @@ def main():
                 "raw_twitter_posts"
             )
 
-            logger.info(f"Inserted {inserted_count} for {primary_term} Twitter posts into MongoDB.")
+            logger.info(f"Inserted {inserted_count} for {term} Twitter posts into MongoDB.")
 
-            if len(twitter_settings["search_terms"]) > 1:
-                skipped_terms = twitter_settings["search_terms"][1:]
-                logger.info(f"Skipping terms: {skipped_terms}")
+            # if len(twitter_settings["search_terms"]) > 1:
+            #     skipped_terms = twitter_settings["search_terms"][1:]
+            #     logger.info(f"Skipping terms: {skipped_terms}")
         else:
             logger.warning("No search terms provided. Skipping Twitter extraction.")
 
@@ -285,10 +298,16 @@ def main():
                         unified_sentiment_data.at[i, "topic_confidence"] = text_to_topic[text]["topic_confidence"]
                         unified_sentiment_data.at[i, "topic_keywords"] = ",".join(text_to_topic[text]["topic_keywords"][:5])
                 
+                if 'source_id' in unified_sentiment_data.columns and 'source' in unified_sentiment_data.columns:
+                    news_source_ids = unified_sentiment_data[unified_sentiment_data['source'] == 'news']['source_id'].value_counts()
+                    logger.info(f"News source_id counts: {dict(news_source_ids)}")
+                logger.info(f"Before deduplication: {len(unified_sentiment_data)} records")
+                logger.info(f"News records before deduplication: {len(unified_sentiment_data[unified_sentiment_data['source'] == 'news'])}")                
                 # remove duplicates
                 unified_sentiment_data = unified_sentiment_data.drop_duplicates(subset=["source", "source_id"])
 
-                
+                logger.info(f"After deduplication: {len(unified_sentiment_data)} records")
+                logger.info(f"News records after deduplication: {len(unified_sentiment_data[unified_sentiment_data['source'] == 'news'])}")
 
                 if not unified_sentiment_data.empty:
                     sentiment_count = store_to_mongodb(
