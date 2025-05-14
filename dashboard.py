@@ -72,7 +72,7 @@ else:
     # show summary
     st.subheader("Data Overview")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Posts", len(df_filtered))
+    col1.metric("Total datapoints", len(df_filtered))
     col2.metric("Sources", len(df_filtered["source"].unique()))
     col3.metric("Topics", len(df_filtered["topic_id"].unique()))
 
@@ -88,18 +88,19 @@ else:
     )
     st.plotly_chart(fig_sentiment, use_container_width=True)
 
-    # topic distribution
-    st.subheader("Topic Distribution")
-    topic_counts = df_filtered.groupby(["topic_id", "source"]).size().reset_index(name="count")
-    fig_topics = px.bar(
-        topic_counts,
-        x="topic_id",
-        y="count",
-        color="source",
-        title="Topic Distribution by Source",
-        labels={"topic_id": "Topic ID", "count": "Number of Documents"},
+    # avg sentiment by source
+    st.subheader("Average Sentiment by Source")
+    sentiment_by_source = df_filtered.groupby("source")["sentiment_compound"].mean().reset_index()
+    fig_sentiment_source = px.bar(
+        sentiment_by_source,
+        x="source",
+        y="sentiment_compound",
+        title="Average Sentiment by Source",
+        labels={"source": "Source", "sentiment_compound": "Average Sentiment Score"},
+        color="sentiment_compound",
+        color_continuous_scale="RdYlGn",
     )
-    st.plotly_chart(fig_topics, use_container_width=True)
+    st.plotly_chart(fig_sentiment_source, use_container_width=True)
 
     # sentiment by topic
     st.subheader("Sentiment by Topic")
@@ -114,7 +115,7 @@ else:
     st.plotly_chart(fig_sentiment_topic, use_container_width=True)
 
     # topic keywords
-    st.subheader("Topic Keywords")
+    # st.subheader("Topic Keywords")
     topics_collection = db["topics"]
     topics_data = list(topics_collection.find())
     topics_df = pd.DataFrame(topics_data)
@@ -125,20 +126,47 @@ else:
         for _, topic in topics_df.iterrows():
             topic_id = topic["topic_id"]
             keywords = ", ".join(topic["topic_keywords"][:10])
-            st.write(f"**Topic {topic_id}**: {keywords}")
-        
-    st.subheader("Recent content with sentiment")
-    recent_df = df_filtered.sort_values(by="processed_at", ascending=False).head(10)
-    for _, row in recent_df.iterrows():
-        sentiment = row["sentiment_compound"]
-        color = "green" if sentiment > 0.05 else "red" if sentiment < -0.05 else "gray"
-        st.markdown(f"<div style='border-left: 5px solid {color}; padding-left: 10px;'>"
-                    f"<p>{row['text'][:100]}...</p>"
-                    f"<p><strong>Source:</strong> {row['source']} | "
-                    f"<strong>Topic:</strong> {row['topic_id']} | "
-                    f"<strong>Sentiment:</strong> {sentiment:.2f}</p></div>", 
-                    unsafe_allow_html=True)
+            # st.write(f"**Topic {topic_id}**: {keywords}")
     
+    ## topic distribution by source
+    st.subheader("Topics by Source")
+
+    topics_by_source = df_filtered.groupby(["source", "topic_id"]).size().reset_index(name="count")
+
+    for source in df_filtered["source"].unique():
+        st.write(f"**{source}**")
+        
+        source_topics = topics_by_source[topics_by_source["source"] == source].sort_values(by="count", ascending=False)
+        
+        if not source_topics.empty:
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                fig = px.bar(
+                    source_topics,
+                    y="topic_id",
+                    x="count",
+                    orientation='h',
+                    title=f"Topic Distribution for {source}",
+                    labels={"topic_id": "Topic ID", "count": "Number of Documents"},
+                    height=max(100 if len(source_topics) > 50 else 150, min(50 * len(source_topics), 400))
+                )
+                fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                for _, row in source_topics.iterrows():
+                    topic_id = row["topic_id"]
+                    if not topics_df.empty and "topic_keywords" in topics_df.columns:
+                        topic_info = topics_df[topics_df["topic_id"] == topic_id]
+                        if not topic_info.empty and len(topic_info["topic_keywords"].iloc[0]) > 0:
+                            keywords = ", ".join(topic_info["topic_keywords"].iloc[0][:5])  
+                            st.write(f"**Topic {topic_id}**: {keywords}.")
+        else:
+            st.write("No topics found for this source.")
+        
+        st.markdown("---")
+        
     
     # topic heatmap
     topic_terms = []
@@ -186,7 +214,7 @@ else:
             weight=row['score']
         )
 
-    pos = nx.spring_layout(G, k=0.3, iterations=50, seed=44)
+    pos = nx.spring_layout(G, k=0.3, iterations=50, seed=37)
 
     plt.figure(figsize=(12, 10))
     topic_nodes = [node for node in G.nodes() if 'Topic' in node]

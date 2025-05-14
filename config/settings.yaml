@@ -13,7 +13,7 @@ reddit:
     - "politics"
     - "technology"
     - "science"
-  posts_per_subreddit: 200
+  posts_per_subreddit: 20
   sort: "hot"
 
   # Twitter extraction settings
@@ -22,9 +22,9 @@ twitter:
     - "politics"
     - "climate change"
     - "economy"
-    - "trump"
+    - "world news"
     - "technology"
-  tweets_per_term: 0 # 0 for testing. Set to 100 later
+  tweets_per_term: 0 # 0 for testing. Set to 20 later
   include_retweets: false
 
 news:
@@ -35,4 +35,4 @@ news:
   categories:
     bbc: ["news", "business", "innovation"]
     cnn: ["world", "business", "politics"]
-  articles_per_source: 25
+  articles_per_source: 20

@@ -160,7 +160,7 @@ class SentimentTransformer:
             for _, row in reddit_transformed.iterrows():
                 unified_data.append({
                     'source': 'reddit',
-                    'source_id': row.get('id', ''),
+                    'source_id': row.get('url', '') or row.get('title', ''),
                     'text': row.get('title', ''),  # set title as primary text
                     'created_at': row.get('created_utc', datetime.now()),
                     'sentiment_compound': row.get('title_sentiment_compound', 0),
@@ -185,12 +185,13 @@ class SentimentTransformer:
                     'processed_at': row.get('processed_at', datetime.now())
                 })
         
+        news_counter = 1
         # adding News data
         if not news_transformed.empty:
             for _, row in news_transformed.iterrows():
                 unified_data.append({
                     'source': 'news',
-                    'source_id': row.get('url', ''),  # URL as source ID
+                    'source_id': f"news_{news_counter}",  # URL as source ID
                     'text': row.get('title', ''),
                     'created_at': row.get('extracted_at', datetime.now()),
                     'sentiment_compound': row.get('sentiment_compound', 0),
@@ -199,6 +200,7 @@ class SentimentTransformer:
                     'sentiment_negative': row.get('sentiment_negative', 0),
                     'processed_at': row.get('processed_at', datetime.now())
                 })
+                news_counter += 1
         
         unified_df = pd.DataFrame(unified_data)
         logger.info(f"Created unified sentiment dataset with {len(unified_df)} records")
