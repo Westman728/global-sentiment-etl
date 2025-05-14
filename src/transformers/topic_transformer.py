@@ -1,101 +1,89 @@
-# twitter_transform_with_topics.py
-import logging
-from pymongo import MongoClient
 import pandas as pd
-from datetime import datetime
+import logging
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
 import numpy as np
-from src.transformers.sentiment_transformer import SentimentTransformer
-from src.transformers.topic_transformer import TopicModeler
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
-# Connect to MongoDB
-mongo_client = MongoClient('mongodb://localhost:27018/')
-db = mongo_client['global_sentiment']  # Replace with your actual database name
+class TopicModeler:
+    """ Extracts topics from text data using Latent Dirichlet Allocation (LDA) """
 
-def main():
-    logger.info("Starting Twitter data transformation...")
-    
-    # 1. Get raw Twitter data
-    raw_tweets = list(db.raw_twitter_posts.find())
-    if not raw_tweets:
-        logger.info("No Twitter data found in raw_twitter_posts collection.")
-        return
-    
-    logger.info(f"Found {len(raw_tweets)} raw Twitter posts.")
-    
-    # 2. Convert to DataFrame
-    tweets_df = pd.DataFrame(raw_tweets)
-    
-    # 3. Transform with sentiment
-    transformer = SentimentTransformer()
-    twitter_transformed = transformer.transform_twitter_data(tweets_df)
-    
-    # 4. Create unified format
-    twitter_counter = 1
-    unified_data = []
-    
-    for _, row in twitter_transformed.iterrows():
-        unified_data.append({
-            'source': 'twitter',
-            'source_id': f"twitter_{twitter_counter}",
-            'text': row.get('text', ''),
-            'created_at': row.get('created_at', datetime.now()),
-            'sentiment_compound': row.get('sentiment_compound', 0),
-            'sentiment_positive': row.get('sentiment_positive', 0),
-            'sentiment_neutral': row.get('sentiment_neutral', 0),
-            'sentiment_negative': row.get('sentiment_negative', 0),
-            'processed_at': row.get('processed_at', datetime.now()),
-            # Default topic values to be updated later
-            'topic_id': -1,
-            'topic_confidence': 0.0,
-            'topic_keywords': ""
-        })
-        twitter_counter += 1
-    
-    # 5. Get all existing texts for topic modeling
-    existing_data = list(db.sentiment_analysis.find({}, {'text': 1}))
-    existing_texts = [doc['text'] for doc in existing_data if 'text' in doc]
-    logger.info(f"Collected {len(existing_texts)} existing texts for topic context")
-    
-    # 6. Get Twitter texts
-    twitter_texts = [item['text'] for item in unified_data]
-    
-    # 7. Combine all texts for topic modeling
-    all_texts = existing_texts + twitter_texts
-    
-    # 8. Get existing topic count (n_topics)
-    n_topics = db.topics.count_documents({})
-    if n_topics == 0:
-        n_topics = 5  # Default if no topics exist
-    
-    # 9. Fit topic model on all texts
-    logger.info(f"Fitting topic model on {len(all_texts)} texts with {n_topics} topics")
-    topic_modeler = TopicModeler(n_topics=n_topics)
-    topic_modeler.fit(all_texts)
-    
-    # 10. Transform only the Twitter texts to get their topics
-    twitter_topic_results = topic_modeler.transform(twitter_texts)
-    
-    # 11. Update unified data with topic information
-    for i, result in enumerate(twitter_topic_results):
-        unified_data[i]['topic_id'] = result['topic_id']
-        unified_data[i]['topic_confidence'] = result['topic_confidence']
-        unified_data[i]['topic_keywords'] = ','.join(result['topic_keywords'][:5])
-    
-    # 12. Insert the transformed data
-    if unified_data:
-        result = db.sentiment_analysis.insert_many(unified_data)
-        logger.info(f"Inserted {len(result.inserted_ids)} Twitter posts into sentiment_analysis collection.")
-    else:
-        logger.warning("No Twitter data to insert.")
-    
-    logger.info("Twitter transformation complete!")
+    def __init__(self, n_topics=5, max_features=1000):
+        """
+        Initializes the TopicModeler.
+        
+        Args:
+            n_topics (int): Number of topics to extract.
+            max_features (int): Maximum number of features to consider.
+        """
+        self.n_topics = n_topics
+        self.max_features = max_features
+        self.vectorizer = CountVectorizer(max_features=max_features, stop_words='english')
+        self.model = LatentDirichletAllocation(
+            n_components=n_topics,
+            learning_method='online',
+            random_state=30,
+        )
+        self.topic_keywords = None
 
-if __name__ == "__main__":
-    main()
+    def fit(self, texts):
+        """
+        Fits the TopicModeler to the given text data.
+        """
+        logger.info(f"Fitting the topic model on {len(texts)} documents.")
+        dtm = self.vectorizer.fit_transform(texts)
+        self.model.fit(dtm)
+        feature_names = self.vectorizer.get_feature_names_out()
+        self.topic_keywords = []
+
+        for topic_idx, topic in enumerate(self.model.components_):
+            top_keywords_idx = topic.argsort()[:-11:-1] # gets the top 10 keywords
+            top_keywords = [feature_names[i] for i in top_keywords_idx]
+            self.topic_keywords.append(top_keywords)
+
+            logger.info(f"Topic {topic_idx}: {', '.join(top_keywords)}")
+
+        return self.topic_keywords
+        
+    def transform(self, texts):
+        """
+        Assigns topics to the given text data.
+        """
+        if not isinstance(texts, list):
+            texts = [texts]
+
+        dtm = self.vectorizer.transform(texts)
+        topic_distribution = self.model.transform(dtm)
+        dominant_topics = topic_distribution.argmax(axis=1)
+        confidences = topic_distribution.max(axis=1)
+
+        results = []
+        for i, (text, topic, confidence) in enumerate(zip(texts, dominant_topics, confidences)):
+            keywords = self.topic_keywords[topic] if self.topic_keywords else []
+
+            results.append({
+                "text": text,
+                "topic_id": int(topic),
+                "topic_confidence": float(confidence),
+                "topic_keywords": keywords,
+            })
+
+        return results
+        
+    def get_topic_keywords(self, topic_id):
+        """
+        Returns the keywords for a given topic ID.
+        """
+        if self.topic_keywords and 0 <= topic_id < len(self.topic_keywords):
+            return self.topic_keywords[topic_id]
+        return []
+    
+    def get_topic_name(self, topic_id):
+        """
+        Returns the name of a given topic ID based on its keywords.
+        """
+        keywords = self.get_topic_keywords(topic_id)
+        if keywords:
+            return f"Topic {topic_id}: {keywords[0]} - {keywords[1]}"
+        return f"Topic {topic_id}"
